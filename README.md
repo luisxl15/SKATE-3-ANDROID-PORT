@@ -52,6 +52,24 @@ Verified on:
 
 ## Building
 
+### The short way (Windows)
+
+`android/build-android.ps1` does everything from your own dump: it writes the
+CMake preset, runs the code generator, cross-compiles and packages the APK.
+
+```powershell
+.\android\build-android.ps1 -GameData D:\skate3\game -TitleUpdate D:\skate3\TU_12K2276_000000C000000.00000000000O3
+```
+
+Add `-Install -PushGameData` to also install onto a connected device and copy
+the game data across. `-Jobs N` lowers the parallelism if the code generator
+runs the machine out of memory (it is LLVM-heavy; the default of 4 is
+deliberate).
+
+The APK it produces contains **your** recompiled game. Keep it to yourself.
+
+### By hand
+
 The code generator needs `default.xex` and `default.xexp` from your dump. Their
 location is set in `CMakeUserPresets.json` — point it at your own copy.
 
