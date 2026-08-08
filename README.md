@@ -50,6 +50,25 @@ Verified on:
 - Your Skate 3 dump, **plus Title Update 3**. Without the TU the code generator
   leaves unresolved calls and the build will not link.
 
+## Getting the source
+
+Clone **recursively**. The runtime lives in a submodule, which in turn pulls in
+SDL3, Dear ImGui, FFmpeg, glslang, the Vulkan headers and others — a plain
+`git clone` leaves those directories empty and the build fails with a confusing
+CMake error.
+
+```bash
+git clone --recursive https://github.com/luisxl15/SKATE-3-ANDROID-PORT.git
+```
+
+Already cloned without it?
+
+```bash
+git submodule update --init --recursive
+```
+
+Expect a couple of GB of dependencies on the first clone.
+
 ## Building
 
 ### The short way (Windows)
