@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    android:versionCode="1"
+    android:versionName="1.0"
+    android:installLocation="auto">
+
+    <!-- OpenGL ES 2.0 -->
+    <uses-feature android:glEsVersion="0x00020000" />
+
+    <!-- Touchscreen support -->
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
+    <!-- Game controller support -->
+    <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.gamepad"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
+
+    <!-- External mouse input events -->
+    <uses-feature
+        android:name="android.hardware.type.pc"
+        android:required="false" />
+
+    <!-- Audio recording support -->
+    <!-- if you want to record audio, uncomment this. -->
+    <!-- <uses-permission android:name="android.permission.RECORD_AUDIO" /> -->
+    <!-- <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" /> -->
+
+    <!-- Camera support -->
+    <!-- if you want to record video, uncomment this. -->
+    <!--
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" />
+    -->
+
+    <!-- Allow downloading to the external storage on Android 5.1 and older -->
+    <!-- <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="22" /> -->
+
+    <!-- Allow access to Bluetooth devices -->
+    <!-- Currently this is just for Steam Controller support and requires setting SDL_HINT_JOYSTICK_HIDAPI_STEAM -->
+    <!-- <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" /> -->
+    <!-- <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" /> -->
+
+    <!-- Allow access to the vibrator -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Read the game data (default.xex, .big archives) from public storage
+         (/sdcard/skate3/game). Arbitrary files need All Files Access. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+    <!-- Allow access to Internet -->
+    <!-- if you want to connect to the network or internet, uncomment this. -->
+    <!--
+    <uses-permission android:name="android.permission.INTERNET" />
+    -->
+
+    <!-- Create a Java class extending SDLActivity and place it in a
+         directory under app/src/main/java matching the package, e.g. app/src/main/java/com/gamemaker/game/MyGame.java
+
+         then replace "SDLActivity" with the name of your class (e.g. "MyGame")
+         in the XML below.
+
+         An example Java class can be found in README-android.md
+    -->
+    <application android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:theme="@style/AppTheme"
+        android:enableOnBackInvokedCallback="false"
+        android:hardwareAccelerated="true" >
+
+        <!-- Deliver the Back button to the app instead of letting SDL finish the
+             activity with it. Without this, one Back press ends the game and
+             the process is killed ("remove task" in ActivityManager), losing
+             all progress - and on an emulator the host's Esc key is mapped to
+             Back, so the very key used to open the settings screen was closing
+             the game instead. -->
+        <meta-data android:name="SDL_ENV.SDL_ANDROID_TRAP_BACK_BUTTON" android:value="1"/>
+
+        <!-- Cvar overrides for mobile (tile-based) GPUs, injected as environment
+             variables by SDLActivity.getManifestEnvironmentVariables() before
+             SDL_main runs; rex::cvar::ApplyEnvironment() picks up REX_<NAME>.
+             Keep in sync with config/skate3.android.toml.
+
+             The shader pair is what makes the game VISIBLE here: with async
+             compilation the frames draw with placeholder pipelines and the
+             presenter skips them so they never flash - on a phone GPU the
+             compile is slow enough that practically every frame is skipped,
+             which is the permanent black screen. -->
+        <meta-data android:name="SDL_ENV.REX_ASYNC_SHADER_COMPILATION" android:value="false"/>
+        <meta-data android:name="SDL_ENV.REX_VULKAN_ASYNC_SKIP_INCOMPLETE_FRAMES" android:value="false"/>
+        <meta-data android:name="SDL_ENV.REX_STORE_SHADERS" android:value="true"/>
+        <!-- GPU cost: MSAA and post-processing are expensive on mobile and are
+             not needed to validate the port. -->
+        <meta-data android:name="SDL_ENV.REX_NATIVE_2X_MSAA" android:value="false"/>
+        <meta-data android:name="SDL_ENV.REX_SWAP_POST_EFFECT" android:value="none"/>
+        <meta-data android:name="SDL_ENV.REX_ANISOTROPIC_OVERRIDE" android:value="1"/>
+        <meta-data android:name="SDL_ENV.REX_OCCLUSION_QUERY_ENABLE" android:value="false"/>
+        <!-- Resolution scale and MSAA ship with PC defaults (2x scale, 4x MSAA):
+             on a 1600x720 phone that renders 3200x1440 and resolves it 4x
+             multisampled, which no mobile GPU absorbs. 1x + MSAA off here.
+             These are forced from the environment rather than left to the
+             settings screen because the screen's saved settings.toml loads AFTER
+             the config file and would otherwise win. -->
+        <!-- NOT the draw resolution scale. Forcing it to 1 blacked the game out
+             while it kept running at full frame rate: the native renderer
+             classifies which emulated passes to suppress by SURFACE PITCH (see
+             the "suppression census" logging and the 1152-wide scene band), and
+             those thresholds assume the 2x-scaled sizes. At 1x every pitch
+             halves, the bands mis-classify, and the scene band gets suppressed
+             along with everything else. Leave resolution_scale alone. -->
+        <!-- Scene MSAA is left at its default. Forcing it to 1 rebuilds the
+             native scene's whole pipeline family and MSAA targets, and it went
+             in right after the last session that played through without an
+             in-game hang - so it is out until it can be reintroduced and tested
+             on its own. -->
+        <!-- <meta-data android:name="SDL_ENV.REX_SKATE3_NATIVE_RENDER_SCENE_MSAA" android:value="1"/> -->
+        <!-- On-screen FPS: the only way to judge a phone build without a wire. -->
+        <meta-data android:name="SDL_ENV.REX_SHOW_FPS_COUNTER" android:value="true"/>
+
+        <activity android:name=".Skate3Activity"
+            android:label="@string/app_name"
+            android:screenOrientation="sensorLandscape"
+            android:alwaysRetainTaskState="true"
+            android:launchMode="singleInstance"
+            android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:preferMinimalPostProcessing="true"
+            android:exported="true"
+            >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Let Android know that we can handle some USB devices and should receive this event -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <!-- Drop file event -->
+            <!--
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            -->
+        </activity>
+    </application>
+
+</manifest>

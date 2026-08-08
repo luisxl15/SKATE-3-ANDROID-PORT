@@ -388,7 +388,58 @@ struct HostTextureFormat {
   uint32_t host_swizzle = xenos::XE_GPU_TEXTURE_SWIZZLE_RGBA;
 };
 
+// Does the device support the BC (S3TC) block formats this file asks for?
+//
+// The Xbox 360's textures are DXT, and the mapping below hands the blocks to
+// the GPU untouched. Desktop parts support BC, but tile-based mobile GPUs
+// (Mali, among others) expose ETC2/ASTC and no BC at all: there every
+// CreateTexture with a BC format returns null, the decode bails, and the
+// texture renders WHITE - which is what turns menu art and text into white
+// squares on those devices while uncompressed content (the FMV YUV planes)
+// still renders.
+//
+// nrhi::Device has no format-capability query and adding one would mean
+// touching both backends, so this is probed empirically against the live
+// device (see ProbeHostBlockCompression). It starts true and is only ever
+// cleared by a failed probe, so a device that supports BC keeps exactly the
+// behaviour it had before this existed.
+inline bool g_host_bc_supported = true;
+
+// Bytes per pixel of the uncompressed stand-in a BC format decodes to when the
+// device has no BC support; 0 for everything else (no fallback needed).
+inline uint32_t BcFallbackPixelBytes(xenos::TextureFormat format) {
+  if (g_host_bc_supported) {
+    return 0;
+  }
+  switch (rex::graphics::GetBaseFormat(format)) {
+    case xenos::TextureFormat::k_DXT1:
+    case xenos::TextureFormat::k_DXT2_3:
+    case xenos::TextureFormat::k_DXT4_5:
+      return 4;  // -> R8G8B8A8
+    case xenos::TextureFormat::k_DXT5A:
+      return 1;  // -> R8
+    case xenos::TextureFormat::k_DXN:
+      return 2;  // -> R8G8
+    default:
+      return 0;
+  }
+}
+
 inline bool GetHostTextureFormat(xenos::TextureFormat format, HostTextureFormat& out) {
+  // Devices without BC take the same guest data decompressed on the CPU into an
+  // uncompressed stand-in (see DecodeBcBlockRow). The swizzles are unchanged:
+  // the decoder writes the same channel meaning the BC format would have.
+  if (const uint32_t fallback_bpp = BcFallbackPixelBytes(format)) {
+    const nrhi::Format host = fallback_bpp == 4   ? nrhi::Format::kR8G8B8A8_UNORM
+                              : fallback_bpp == 2 ? nrhi::Format::kR8G8_UNORM
+                                                  : nrhi::Format::kR8_UNORM;
+    const uint32_t swizzle =
+        fallback_bpp == 4   ? xenos::XE_GPU_TEXTURE_SWIZZLE_RGBA
+        : fallback_bpp == 2 ? xenos::XE_GPU_TEXTURE_SWIZZLE_RGGG
+                            : xenos::XE_GPU_TEXTURE_SWIZZLE_RRRR;
+    out = {host, host, swizzle};
+    return true;
+  }
   switch (rex::graphics::GetBaseFormat(format)) {
     case xenos::TextureFormat::k_DXT1:
       out = {nrhi::Format::kBC1_UNORM, nrhi::Format::kBC1_UNORM,

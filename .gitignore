@@ -9,6 +9,31 @@
 /game/
 *.iso
 *.xex
+*.xexp
+*.xexpp
+# Title Update packages and loose dumps kept next to the project.
+/Skate 3 v*/
+
+# NEVER PUBLISH: the recompiled game.
+# libskate3.so IS Skate 3's code translated to aarch64, and the APK embeds it.
+# Distributing either one distributes the game itself - the whole point of
+# "bring your own dump" is that these stay local.
+/android/app/src/main/jniLibs/
+/android/app/build/
+/android/.gradle/
+/android/local.properties
+/backups/
+*.apk
+*.so
+
+# Android Studio / Gradle scratch
+/android/.idea/
+/android/build/
+
+# Source icon pack (1820 files). Only the subset actually used is committed,
+# under android/app/src/main/assets/buttons/.
+/botoes/
+__pycache__/
 
 # Local runtime/config overrides
 skate3.toml

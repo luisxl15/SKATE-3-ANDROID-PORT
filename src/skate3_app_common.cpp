@@ -11,6 +11,10 @@
 #include "skate3_title_update_installer.h"
 #include "skate3_user_settings.h"
 
+#if defined(__ANDROID__)
+#include <SDL3/SDL.h>
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -36,7 +40,7 @@
 #define NOMINMAX
 #endif
 #include <Windows.h>
-#elif defined(__linux__) || defined(__APPLE__)
+#elif (defined(__linux__) || defined(__APPLE__)) && !defined(__ANDROID__)
 #include <spawn.h>
 #if defined(__APPLE__)
 #include <crt_externs.h>
@@ -426,6 +430,26 @@ std::filesystem::path ResolveRuntimeGameDataRoot(const rex::PathConfig& paths) {
   if (!paths.game_data_root.empty()) {
     return paths.game_data_root;
   }
+
+#if defined(__ANDROID__)
+  // Preferred: a public folder that `adb push game /sdcard/skate3/` can write
+  // and any file manager can reach. Reading it needs the app's "All files
+  // access" (MANAGE_EXTERNAL_STORAGE) permission. Android 11+ (esp. MIUI)
+  // blocks adb push into Android/data, so this is the reliable path.
+  {
+    std::error_code ec;
+    for (const char* pub : {"/storage/emulated/0/skate3/game", "/sdcard/skate3/game"}) {
+      if (std::filesystem::exists(std::filesystem::path(pub) / "default.xex", ec)) {
+        return std::filesystem::path(pub);
+      }
+    }
+  }
+  // Fallback: the app-external files dir (works where adb push to Android/data
+  // is allowed, e.g. older Android / emulators).
+  if (const char* external = SDL_GetAndroidExternalStoragePath()) {
+    return std::filesystem::path(external) / "game";
+  }
+#endif
 
   const auto working_directory_game = std::filesystem::current_path() / "game";
   if (skate3::IsGameInstalled(working_directory_game)) {
@@ -976,7 +1000,7 @@ void Skate3BaseApp::RestartGame() {
     }
     CloseHandle(process_info.hThread);
     CloseHandle(process_info.hProcess);
-#elif defined(__linux__) || defined(__APPLE__)
+#elif (defined(__linux__) || defined(__APPLE__)) && !defined(__ANDROID__)
     const auto executable_path = rex::filesystem::GetExecutablePath();
     if (executable_path.empty()) {
       REXLOG_WARN("Restart requested, but the executable path could not be resolved");

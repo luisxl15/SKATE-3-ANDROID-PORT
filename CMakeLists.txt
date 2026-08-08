@@ -272,6 +272,11 @@ set(SKATE3_SOURCES
     ${SKATE3_COMMON_SOURCES}
 )
 
+if(ANDROID)
+    # Android SDL_main entry that runs the app registered under "skate3".
+    list(APPEND SKATE3_SOURCES src/main_android.cpp)
+endif()
+
 if(WIN32)
     add_executable(skate3 WIN32 ${SKATE3_SOURCES})
     configure_file(
@@ -286,6 +291,10 @@ if(WIN32)
         @ONLY
     )
     target_sources(skate3 PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/skate3.rc)
+elseif(ANDROID)
+    # On Android the game ships as a shared library loaded by the APK
+    # (System.loadLibrary), not a standalone executable.
+    add_library(skate3 SHARED ${SKATE3_SOURCES})
 else()
     add_executable(skate3 ${SKATE3_SOURCES})
 endif()

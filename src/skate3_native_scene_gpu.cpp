@@ -1589,6 +1589,13 @@ thread_local uint64_t g_tex_dec_create_ns = 0;
 thread_local uint64_t g_tex_dec_gen_ns = 0;
 thread_local uint64_t g_tex_dec_copy_ns = 0;
 
+// Defined with the other BC fallback helpers further down (they sit next to the
+// capability probe that gates them); only the decode paths below need them.
+void DecodeBcBlockRow(const uint8_t* blocks, uint32_t cols,
+                      xenos::TextureFormat base_format, uint32_t dst_bpp,
+                      uint8_t* dst, uint32_t dst_pitch, uint32_t dst_width,
+                      uint32_t dst_rows_left);
+
 bool EnsureGuestTextureFromWords(const NativeGuestOutputRenderContext& context,
                                  uint8_t* base, const uint32_t words[6],
                                  GuestTexture& out) {
@@ -1777,8 +1784,13 @@ bool EnsureGuestTextureFromWords(const NativeGuestOutputRenderContext& context,
   }
 
   // Per-mip upload footprints (D3D12 alignment rules).
+  // cols/rows stay in SOURCE blocks (the untiling below is block-addressed).
+  // dst_rows/pitch describe the DESTINATION: identical to the source layout
+  // normally, but pixel rows when the BC fallback decompresses on the way in.
+  const uint32_t bc_dst_bpp = BcFallbackPixelBytes(info.format);
+  const auto base_fmt_for_bc = rex::graphics::GetBaseFormat(info.format);
   struct MipPlan {
-    uint32_t offset, pitch, cols, rows;
+    uint32_t offset, pitch, cols, rows, dst_rows;
   };
   MipPlan plans[16] = {};
   uint32_t upload_size = 0;
@@ -1788,11 +1800,21 @@ bool EnsureGuestTextureFromWords(const NativeGuestOutputRenderContext& context,
     MipPlan& p = plans[m];
     p.cols = (mw + block_w - 1) / block_w;
     p.rows = (mh + block_h - 1) / block_h;
-    p.pitch = (p.cols * bytes_per_block + (nrhi::kRowPitchAlignment - 1u)) &
-              ~(nrhi::kRowPitchAlignment - 1u);
+    if (bc_dst_bpp) {
+      // The texture was created block-aligned (host_width/host_height), and
+      // CopyBufferToTexture copies those dimensions, so the destination must
+      // cover them - not just mw/mh.
+      p.dst_rows = p.rows * block_h;
+      p.pitch = (p.cols * block_w * bc_dst_bpp + (nrhi::kRowPitchAlignment - 1u)) &
+                ~(nrhi::kRowPitchAlignment - 1u);
+    } else {
+      p.dst_rows = p.rows;
+      p.pitch = (p.cols * bytes_per_block + (nrhi::kRowPitchAlignment - 1u)) &
+                ~(nrhi::kRowPitchAlignment - 1u);
+    }
     p.offset = (upload_size + (kUploadPlacementAlignment - 1u)) &
                ~(kUploadPlacementAlignment - 1u);
-    upload_size = p.offset + p.pitch * p.rows;
+    upload_size = p.offset + p.pitch * p.dst_rows;
   }
 
   nrhi::Device* device = context.device;
@@ -1906,13 +1928,25 @@ bool EnsureGuestTextureFromWords(const NativeGuestOutputRenderContext& context,
           std::memcpy(out_row + i, &value, sizeof(value));
         }
       }
-      std::memcpy(mapping + p.offset + size_t(by) * p.pitch, out_row, row_bytes);
+      if (bc_dst_bpp) {
+        // No BC on this device: expand this row of blocks into block_h pixel
+        // rows. out_row already went through untiling and the endian swap, so
+        // the blocks are exactly what the GPU would have sampled.
+        DecodeBcBlockRow(out_row, p.cols, base_fmt_for_bc, bc_dst_bpp,
+                         mapping + p.offset + size_t(by) * block_h * p.pitch,
+                         p.pitch, p.cols * block_w, p.dst_rows - by * block_h);
+      } else {
+        std::memcpy(mapping + p.offset + size_t(by) * p.pitch, out_row, row_bytes);
+      }
     }
     // Half-black-mip diagnostic (PCU Library banners): discriminate "the
     // guest pool genuinely holds zeros for this mip" from "our addressing
     // zeroed/misread it". Samples 32 uploaded blocks spread over the mip;
     // guard_zeroed separates range-guard zeroing from zero CONTENT.
-    if (m > 0) {
+    // Skipped under the BC fallback: the samples below re-read the mapping as
+    // blocks, which it no longer holds (decompressed pixels), so every reading
+    // would be meaningless.
+    if (m > 0 && !bc_dst_bpp) {
       uint32_t zero_samples = 0;
       const uint32_t total_blocks = p.rows * p.cols;
       for (uint32_t s = 0; s < 32; ++s) {
@@ -4142,10 +4176,184 @@ bool EnsureOutputSizedTargets(const NativeGuestOutputRenderContext& context) {
   return true;
 }
 
+namespace {  // matches the forward declaration used by the decode paths above
+
+// ---- CPU BC decompression (devices without BC; see g_host_bc_supported) ----
+// One row of 4x4 blocks -> up to 4 rows of pixels in the upload mapping. Only
+// reached when the probe below failed, so nothing here runs on a device that
+// can sample the blocks directly.
+
+// BC1 colour block: two RGB565 endpoints + 2 bits per texel. When c0 <= c1 the
+// block is 3-colour + punch-through alpha (index 3 = transparent black).
+void DecodeBc1Colour(const uint8_t* src, uint8_t out[16][4], bool opaque_alpha) {
+  const uint16_t c0 = uint16_t(src[0] | (src[1] << 8));
+  const uint16_t c1 = uint16_t(src[2] | (src[3] << 8));
+  uint8_t r[4], g[4], b[4], a[4];
+  auto unpack = [](uint16_t c, uint8_t& cr, uint8_t& cg, uint8_t& cb) {
+    const uint32_t r5 = (c >> 11) & 0x1F, g6 = (c >> 5) & 0x3F, cb5 = c & 0x1F;
+    cr = uint8_t((r5 * 255 + 15) / 31);
+    cg = uint8_t((g6 * 255 + 31) / 63);
+    cb = uint8_t((cb5 * 255 + 15) / 31);
+  };
+  unpack(c0, r[0], g[0], b[0]);
+  unpack(c1, r[1], g[1], b[1]);
+  a[0] = a[1] = a[2] = a[3] = 255;
+  if (c0 > c1) {
+    r[2] = uint8_t((2 * r[0] + r[1]) / 3);
+    g[2] = uint8_t((2 * g[0] + g[1]) / 3);
+    b[2] = uint8_t((2 * b[0] + b[1]) / 3);
+    r[3] = uint8_t((r[0] + 2 * r[1]) / 3);
+    g[3] = uint8_t((g[0] + 2 * g[1]) / 3);
+    b[3] = uint8_t((b[0] + 2 * b[1]) / 3);
+  } else {
+    r[2] = uint8_t((r[0] + r[1]) / 2);
+    g[2] = uint8_t((g[0] + g[1]) / 2);
+    b[2] = uint8_t((b[0] + b[1]) / 2);
+    r[3] = g[3] = b[3] = 0;
+    a[3] = opaque_alpha ? 255 : 0;  // BC2/BC3 carry their own alpha
+  }
+  const uint32_t bits = uint32_t(src[4]) | (uint32_t(src[5]) << 8) |
+                        (uint32_t(src[6]) << 16) | (uint32_t(src[7]) << 24);
+  for (uint32_t t = 0; t < 16; ++t) {
+    const uint32_t i = (bits >> (2 * t)) & 3u;
+    out[t][0] = r[i];
+    out[t][1] = g[i];
+    out[t][2] = b[i];
+    out[t][3] = a[i];
+  }
+}
+
+// BC4-style interpolated 8-bit channel (also BC3/BC5 alpha): 2 endpoints + 3
+// bits per texel, 8-value or 6-value+0/255 depending on endpoint order.
+void DecodeBc4Channel(const uint8_t* src, uint8_t out[16]) {
+  uint8_t v[8];
+  v[0] = src[0];
+  v[1] = src[1];
+  if (v[0] > v[1]) {
+    for (uint32_t i = 1; i < 7; ++i) {
+      v[i + 1] = uint8_t(((7 - i) * v[0] + i * v[1]) / 7);
+    }
+  } else {
+    for (uint32_t i = 1; i < 5; ++i) {
+      v[i + 1] = uint8_t(((5 - i) * v[0] + i * v[1]) / 5);
+    }
+    v[6] = 0;
+    v[7] = 255;
+  }
+  uint64_t bits = 0;
+  for (uint32_t i = 0; i < 6; ++i) {
+    bits |= uint64_t(src[2 + i]) << (8 * i);
+  }
+  for (uint32_t t = 0; t < 16; ++t) {
+    out[t] = v[(bits >> (3 * t)) & 7u];
+  }
+}
+
+// Decompress one row of blocks into the destination pixel rows. `dst` points at
+// the first pixel row of this block row; rows past `dst_rows_left` (the mip's
+// last, partial block row) are skipped.
+void DecodeBcBlockRow(const uint8_t* blocks, uint32_t cols,
+                      xenos::TextureFormat base_format, uint32_t dst_bpp,
+                      uint8_t* dst, uint32_t dst_pitch, uint32_t dst_width,
+                      uint32_t dst_rows_left) {
+  const uint32_t block_bytes = (base_format == xenos::TextureFormat::k_DXT1 ||
+                                base_format == xenos::TextureFormat::k_DXT5A)
+                                   ? 8u
+                                   : 16u;
+  for (uint32_t bx = 0; bx < cols; ++bx) {
+    const uint8_t* src = blocks + size_t(bx) * block_bytes;
+    uint8_t rgba[16][4] = {};
+    uint8_t ch0[16] = {}, ch1[16] = {};
+    switch (base_format) {
+      case xenos::TextureFormat::k_DXT1:
+        DecodeBc1Colour(src, rgba, /*opaque_alpha=*/false);
+        break;
+      case xenos::TextureFormat::k_DXT2_3:
+        DecodeBc1Colour(src + 8, rgba, /*opaque_alpha=*/true);
+        for (uint32_t t = 0; t < 16; ++t) {
+          // 4 bits of explicit alpha per texel, low nibble first.
+          const uint8_t nib = uint8_t((src[t >> 1] >> ((t & 1) * 4)) & 0xF);
+          rgba[t][3] = uint8_t(nib * 17);
+        }
+        break;
+      case xenos::TextureFormat::k_DXT4_5:
+        DecodeBc1Colour(src + 8, rgba, /*opaque_alpha=*/true);
+        DecodeBc4Channel(src, ch0);
+        for (uint32_t t = 0; t < 16; ++t) {
+          rgba[t][3] = ch0[t];
+        }
+        break;
+      case xenos::TextureFormat::k_DXT5A:
+        DecodeBc4Channel(src, ch0);
+        break;
+      case xenos::TextureFormat::k_DXN:
+        DecodeBc4Channel(src, ch0);
+        DecodeBc4Channel(src + 8, ch1);
+        break;
+      default:
+        return;
+    }
+    for (uint32_t ty = 0; ty < 4 && ty < dst_rows_left; ++ty) {
+      uint8_t* row = dst + size_t(ty) * dst_pitch;
+      for (uint32_t tx = 0; tx < 4; ++tx) {
+        const uint32_t px = bx * 4 + tx;
+        if (px >= dst_width) {
+          break;
+        }
+        uint8_t* p = row + size_t(px) * dst_bpp;
+        const uint32_t t = ty * 4 + tx;
+        if (dst_bpp == 4) {
+          p[0] = rgba[t][0];
+          p[1] = rgba[t][1];
+          p[2] = rgba[t][2];
+          p[3] = rgba[t][3];
+        } else if (dst_bpp == 2) {
+          p[0] = ch0[t];
+          p[1] = ch1[t];
+        } else {
+          p[0] = ch0[t];
+        }
+      }
+    }
+  }
+}
+
+}  // namespace
+
+// One-shot BC/S3TC capability probe (see g_host_bc_supported). A 4x4 BC1
+// texture is the smallest legal block-compressed surface; if the device cannot
+// represent it, CreateTexture returns null and every DXT decode would fail the
+// same way. Probing beats a feature query here: it needs no backend plumbing
+// and asks exactly the question the decode path asks.
+void ProbeHostBlockCompression(nrhi::Device* device) {
+  static bool probed = false;
+  if (probed || device == nullptr) {
+    return;
+  }
+  probed = true;
+  nrhi::TextureDesc desc;
+  desc.kind = nrhi::TextureKind::k2D;
+  desc.width = 4;
+  desc.height = 4;
+  desc.mip_levels = 1;
+  desc.format = nrhi::Format::kBC1_UNORM;
+  desc.initial_state = nrhi::ResourceState::kCopyDest;
+  nrhi::Texture* probe = device->CreateTexture(desc);
+  g_host_bc_supported = probe != nullptr;
+  if (probe != nullptr) {
+    device->DestroyDeferred(probe);
+  }
+  REXLOG_INFO(
+      "native-scene: block-compressed (BC/S3TC) textures {} on this device",
+      g_host_bc_supported ? "supported" : "NOT supported - DXT content would "
+                                          "render white without a fallback");
+}
+
 bool EnsurePipeline(const NativeGuestOutputRenderContext& context) {
   if (g_r.failed) return false;
   nrhi::Device* device = context.device;
   g_r.device = device;
+  ProbeHostBlockCompression(device);
 
   if (!EnsureRootSignature(context)) {
     return false;

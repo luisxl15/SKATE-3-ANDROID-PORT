@@ -1,0 +1,20 @@
+# Skate 3 - Android: desliga os passes RTT de retrato nos menus.
+#
+# Copie como /sdcard/skate3/skate3.toml.
+#
+# Motivo: com este cvar ligado (padrao), ao entrar no menu de time/dificuldade
+# o renderizador baixa o suppress_mode para deixar EXECUTAR os passes
+# render-to-texture dos retratos de personagem - desenhos emulados que passam
+# pelo ring buffer da GPU. No Android e onde tudo quebra:
+#
+#   native-scene: portrait window - suppress mode 2 -> 3
+#   [gpu] Unimplemented GPU OPCODE: 0x00
+#   **** INDIRECT RINGBUFFER: Failed to execute packet
+#
+# ...seguido de SIGSEGV ou de chamada indireta para o endereco 0.
+#
+# Custo assumido: as caixas de retrato dos skatistas ficam VAZIAS (o proprio
+# codigo documenta isso como o comportamento do modo 2). Em troca, o caminho
+# que crasha nao roda - a aposta e conseguir passar do menu e chegar ingame.
+
+skate3_native_render_scene_menu_rtt_passes = false

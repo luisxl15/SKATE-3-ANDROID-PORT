@@ -34,6 +34,9 @@
 #include <rex/ui/window_win.h>
 #elif defined(__APPLE__)
 #include <sys/wait.h>
+#elif defined(__ANDROID__)
+// No GTK on Android; the app shell handles title-update install.
+#include <sys/wait.h>
 #else
 #include <sys/wait.h>
 
@@ -610,6 +613,11 @@ std::filesystem::path PickTitleUpdateFile() {
 std::filesystem::path PickTitleUpdateFile() {
   return skate3::PickTitleUpdateFileMacOS();
 }
+#elif defined(__ANDROID__)
+std::filesystem::path PickTitleUpdateFile() {
+  // No desktop file picker on Android; handled by the app shell.
+  return {};
+}
 #else
 std::filesystem::path PickTitleUpdateFile() {
   GtkWidget* dialog = gtk_file_chooser_dialog_new(
@@ -899,7 +907,7 @@ bool RunTitleUpdateInstallWizardBlocking(rex::ui::WindowedAppContext& app_contex
     if (window) {
       window->RequestPaint();
     }
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) && !defined(__ANDROID__)
     while (gtk_events_pending()) {
       gtk_main_iteration_do(FALSE);
     }

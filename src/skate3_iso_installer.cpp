@@ -27,6 +27,8 @@
 
 #include <rex/ui/window_win.h>
 #elif defined(__APPLE__)
+#elif defined(__ANDROID__)
+// No desktop file-picker / GTK on Android; the app shell handles game install.
 #else
 #include <gtk/gtk.h>
 #endif
@@ -103,6 +105,11 @@ std::filesystem::path PickIsoFile() {
 #elif defined(__APPLE__)
 std::filesystem::path PickIsoFile() {
   return skate3::PickIsoFileMacOS();
+}
+#elif defined(__ANDROID__)
+std::filesystem::path PickIsoFile() {
+  // No desktop file picker on Android; ISO install is handled by the app shell.
+  return {};
 }
 #else
 std::filesystem::path PickIsoFile() {
@@ -486,7 +493,7 @@ bool RunRexglueIsoInstallWizardBlocking(rex::ui::WindowedAppContext& app_context
     if (window) {
       window->RequestPaint();
     }
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) && !defined(__ANDROID__)
     while (gtk_events_pending()) {
       gtk_main_iteration_do(FALSE);
     }

@@ -1,0 +1,13 @@
+# Skate 3 - Android, TESTE: camada native-render DESLIGADA.
+#
+# Copie como /sdcard/skate3/skate3.toml.
+#
+# Por que existe: o decodificador de texturas do native-render falha em varias
+# texturas (o codigo desenha decode falho como BRANCO - e o que produz os
+# retangulos brancos nos menus). O port do Buku313 nao tem essa camada e nao
+# sofre desse bug, o que sugere testar o caminho de render padrao do guest.
+#
+# Os cvars de shader do skate3.android.toml NAO estao repetidos aqui: eles ja
+# vao pelo AndroidManifest (SDL_ENV) e o ambiente vence sobre o arquivo.
+
+skate3_native_render = false

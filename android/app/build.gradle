@@ -1,0 +1,49 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace = "com.skate3recomp"
+    compileSdkVersion 35
+    defaultConfig {
+        applicationId "com.skate3recomp"
+        // API 26: matches the ANDROID_PLATFORM the native libraries were built
+        // against, and the floor for the Vulkan / AHardwareBuffer paths.
+        minSdkVersion 26
+        targetSdkVersion 35
+        versionCode 1
+        versionName "1.0"
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // The native runtime (librexruntimerd.so) and game (libskate3.so) are built
+    // separately by the project's CMake Android build and dropped in here; the
+    // Gradle project only packages them, it does not compile native code.
+    sourceSets.main {
+        jniLibs.srcDir 'src/main/jniLibs'
+    }
+
+    // The recompiled game library is very large; extract native libs on install
+    // so dlopen/System.loadLibrary reliably map them.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+
+    lint {
+        abortOnError = false
+    }
+}
+
+dependencies {
+}

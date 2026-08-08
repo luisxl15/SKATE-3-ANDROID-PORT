@@ -26,6 +26,10 @@
 #include <rex/logging.h>
 #include <rex/ui/window.h>
 
+// NOTE(port): tried defaulting this OFF on Android to work around the black
+// screen, but the plain guest render path SIGSEGVs inside recompiled code on
+// Android (the hook was masking a broken guest path). Keep it ON everywhere;
+// the black screen is a separate texture-streaming issue.
 REXCVAR_DEFINE_BOOL(skate3_native_render, true, "Skate 3",
                     "Enable the Skate 3 data-driven native renderer hook layer")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);

@@ -1,0 +1,45 @@
+﻿# Skate 3 - configuracao Android (GPUs moveis / tile-based: Mali, Adreno).
+#
+# Copie este arquivo como  /sdcard/skate3/skate3.toml  no aparelho.
+# (GetAppRootFolder() no Android procura o config nessa pasta publica; o
+# /proc/self/exe la aponta para /system/bin, que e somente leitura.)
+
+# --- Shaders: a causa da tela preta em GPU movel -------------------------
+# Com compilacao assincrona, os frames desenham com pipelines "placeholder"
+# enquanto o shader real compila, e o presenter PULA esses frames para nao
+# piscar. Numa GPU movel a compilacao demora tanto que praticamente todo
+# frame e pulado: o resultado e uma tela preta permanente.
+# Compilar de forma sincrona custa engasgos nos primeiros segundos, mas a
+# imagem aparece; store_shaders guarda o cache para as proximas execucoes.
+async_shader_compilation = false
+vulkan_async_skip_incomplete_frames = false
+store_shaders = true
+
+# --- Custo de GPU ---------------------------------------------------------
+# MSAA nativo e pos-processamento sao caros em GPU de celular e nao sao
+# necessarios para validar o port.
+native_2x_msaa = false
+swap_post_effect = "none"
+anisotropic_override = 1
+
+# Occlusion queries forcam sincronizacao CPU/GPU; em tile-based custam caro.
+occlusion_query_enable = false
+
+# --- O que destrava o caminho ate o gameplay ------------------------------
+# Ligado (padrao), ao entrar no menu de time/dificuldade o renderizador baixa o
+# suppress_mode para deixar EXECUTAR os passes render-to-texture dos retratos
+# de personagem - desenhos emulados que passam pelo ring buffer da GPU. No
+# Android e exatamente onde quebra:
+#
+#   native-scene: portrait window - suppress mode 2 -> 3
+#   [gpu] Unimplemented GPU OPCODE: 0x00
+#   **** INDIRECT RINGBUFFER: Failed to execute packet
+#
+# ...seguido de SIGSEGV na render thread, ou de chamada indireta para o
+# endereco 0 numa thread do guest. Sao os mesmos passes que desenhavam os
+# retangulos brancos no menu de time.
+#
+# Custo: as caixas de retrato dos skatistas ficam VAZIAS (o proprio codigo
+# documenta isso como o comportamento do modo 2). Em troca o jogo passa dos
+# menus e chega ao gameplay.
+skate3_native_render_scene_menu_rtt_passes = false
