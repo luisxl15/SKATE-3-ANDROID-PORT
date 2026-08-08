@@ -1,299 +1,211 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="banner.png">
-  <source media="(prefers-color-scheme: light)" srcset="banner-light.png">
-  <img alt="Skate 3 Native PC Recompilation" src="banner-light.png">
-</picture>
+# Skate 3 — Android port
 
-An unofficial native recompilation of the Xbox 360 version of Skate 3, supporting Windows, Linux, and macOS.
+An Android (arm64) port of **Skate 3 Recompiled**. The Xbox 360 game is
+**statically recompiled** to native code — this is not an emulator: the PowerPC
+game code is translated to C++ and compiled to real aarch64, with Vulkan for
+graphics and SDL3 for input, audio and windowing.
 
-As of v2.0.0, the game runs on a native renderer built directly on Direct3D 12 and Vulkan instead of emulating the Xbox 360 GPU. Compared to the emulated renderer it delivers more than twice the frame rate at roughly a quarter of the GPU power draw, and on Apple Silicon the frame rate uplift is closer to 10x.
+The recompilation itself, the native renderer and everything that makes the game
+run are the work of the upstream project by **mchughalex**
+([skate3recomp](https://github.com/mchughalex/skate3recomp)); its documentation
+is kept here as [`README-Upstream.md`](README-Upstream.md). This repository adds
+the Android target on top: app shell, touch controls, and the platform fixes
+listed below.
 
-The new native renderer is early and is likely to have issues, I haven't tested the game all the way through.
+> **No game files are included, and none are distributed.** You must provide
+> your own legally-obtained copy of Skate 3 (Xbox 360).
 
-The project does not include Skate 3 retail game files. To run or build the project, you must provide files from your own legally obtained Xbox 360 copy of Skate 3.
+## Status
 
-Native Rendering Showcase (click to go to YouTube):
+| | |
+|---|---|
+| Boot, menus, FMV | working |
+| **Gameplay** | **working** |
+| On-screen touch controls | working (Xbox / PlayStation glyphs, configurable) |
+| In-game settings screen | working (on-screen `ESC` button) |
+| Audio | partial — the XMA decoder overruns its input buffer and recovers, so playback glitches |
+| Skater portrait boxes in menus | intentionally empty (see *Known issues*) |
+| Textures on GPUs without BC support | fallback implemented, **not yet verified on hardware** |
 
-<p align="center">
-  <a href="https://youtu.be/ETXCOsip1Uo">
-    <img src="https://img.youtube.com/vi/ETXCOsip1Uo/maxresdefault.jpg" alt="Skate 3 Recomp native rendering showcase" width="420">
-  </a>
-</p>
+Verified on:
 
-## How Do I Play?
+- **Emulator** (BlueStacks, Android 9, x86_64 with host GPU passthrough) — reaches
+  gameplay at ~56 FPS. Note this renders on the *host's* desktop GPU, so it says
+  nothing about mobile GPU performance.
+- **Phone** — Redmi 13 (Android 15, arm64, Mali‑G52 MC2) — boots and reaches the
+  menus natively. Expect low frame rates: this is a low-end mobile GPU.
 
-Notes:
+## Requirements
 
-- The Windows version is the most tested, followed by Linux, and then macOS.
-- On some hardware configurations, you may have a better experience running the Windows version through a translation layer like Proton rather than the native Linux build itself.
-- The macOS ARM build is experimental and more prone to issues.
+### Device
+- arm64-v8a, Android 8.0 (API 26) or newer
+- Vulkan-capable GPU
+- ~7 GB free storage for the game data
 
-### Windows
+### Building
+- Android NDK **r29**
+- CMake + Ninja
+- A host C++ toolchain (the code generator runs on your PC, not the phone)
+- JDK 17 (for Gradle)
+- Your Skate 3 dump, **plus Title Update 3**. Without the TU the code generator
+  leaves unresolved calls and the build will not link.
 
-1. Download the latest release Skate3Recomp-Windows.zip from the releases page.
-2. Extract it anywhere you like, to a folder you control.
-3. Run skate3.exe.
-4. Click "Select ISO" to select your legally obtained copy of Skate 3.
-5. Wait for the installer to extract the game files.
-6. Click "Start Game".
+## Building
 
-### Linux
+The code generator needs `default.xex` and `default.xexp` from your dump. Their
+location is set in `CMakeUserPresets.json` — point it at your own copy.
 
-1. Download the latest release Skate3Recomp-Linux.zip from the releases page.
-2. Extract it anywhere you like, to a folder you control.
-3. Run skate3.
-4. Click "Select ISO" to select your legally obtained copy of Skate 3.
-5. Wait for the installer to extract the game files.
-6. Click "Start Game".
+Cross-compile the native libraries:
 
-### macOS (ARM / Experimental)
-
-1. Download the latest release Skate3Recomp-macOS.zip from the releases page.
-2. Extract it anywhere you like, to a folder you control.
-3. Run the game by opening the skate3recomp app. Game files, saves and settings are kept in the folder containing the app, so keep it in a folder you control rather than in Downloads or Applications.
-4. The first time, right-click the app and choose Open, or approve it under System Settings > Privacy & Security, before macOS will allow it to run.
-5. Click "Select ISO" to select your legally obtained copy of Skate 3.
-6. Wait for the installer to extract the game files.
-7. Click "Start Game".
-
-## Native Renderer
-
-Since v2.0.0 the game no longer relies on emulating the Xbox 360 GPU. A native renderer draws the game directly through Direct3D 12 or Vulkan, covering the entire game: gameplay, menus, HUD, loading screens, videos, and the photo, replay, skater, and park editors. It runs exact ports of the game's own material shading for the world, characters, vehicles, and water, so the image stays at close visual parity with the original console output while running far faster and more efficiently.
-
-- The native renderer is on by default. Settings > Video > Renderer switches between Native and Emulated live, and F5 hot-toggles between them at any time. If the native renderer ever hits an unrecoverable error, the game falls back to the emulated renderer and shows a corner indicator; F5 retries the native path.
-- On Windows, a single build ships both graphics API backends: Settings > Video > Graphics API selects DirectX 12 or Vulkan (applied with Apply & Restart; DirectX 12 is preferred by default). Linux uses Vulkan, and macOS uses Vulkan through MoltenVK.
-- Optional enhancements beyond the original game live under Settings > Video: MSAA up to 8x, enhanced real-time sun shadows with contact-hardening soft shadows, ambient occlusion, bloom, volumetric lighting, extended draw distance and world streaming, render scale up to 3x, and true ultrawide.
-
-Known issues:
-
-- Occasional texture and asset pop-in or brief flicker while streaming quickly around the map (also present in the emulated renderer)
-- Issues with rendering skater customization options in the edit skater mode (skin, hair, clothing etc.)
-- Hall of Meat currently not rendered properly (missing bone highlights etc.)
-- Skate parks and park editing currently have some general visual parity / rendering issues
-
-## Installing DLC
-
-To use DLC, you must provide package files from your own legally obtained Xbox 360 DLC.
-
-Create a `dlc` folder either beside the executable, inside the installed game folder,
-or in the user data folder. Place the DLC package files in that
-folder and start the game.
-
-## Saves and Portable Mode
-
-Saved games live in the user data folder by default (`%APPDATA%\skate3`, i.e.
-`AppData\Roaming\skate3`, on Windows). Two portable options are available:
-
-- Create a `saves` folder next to the executable and the game keeps saved games
-  there instead. The folder must exist before launch, and existing saves are not
-  migrated automatically - copy them over from the user data folder.
-- Create an empty `portable.txt` file next to the executable to keep all user
-  data in the executable's folder.
-
-## True Ultrawide
-
-The builds include an experimental true ultrawide mode: the native renderer draws the world at your display's full aspect ratio (21:9 and wider) with a matching wider field of view, while the HUD and menus stay centered and undistorted. Enable it via the Aspect Ratio setting or `skate3_ultrawide = true`. It requires the native renderer; with the emulated renderer the game presents in standard 16:9. Rendering more of the scene costs proportionally more GPU time.
-
-## Controls
-
-- Standard Xbox controls using an Xbox controller are the preferred and main input method.
-- PlayStation (DualShock/DualSense), Switch and most generic controllers are supported through the SDL controller backend: set Settings > Controls > Controller Backend to SDL and restart the game. Steam Input through XInput also works. On Linux and macOS the SDL backend is always used, so these controllers work out of the box.
-- Keyboard controls can be enabled in the game settings menu.
-- Press Escape on keyboard or (RB + Start) on the controller to open the game settings menu. The chord can be changed in Settings > Controls.
-
-### Keyboard Keybinds
-
-- Left stick: W/A/S/D
-- Right stick: mouse movement
-- A/B/X/Y: Space/C/E/F
-- LT/RT: RMB/LMB
-- LB/RB: Q/R
-- Left stick press: Shift
-- Right stick press: MMB
-- Back/Start: Tab/Return
-
-## Building from Source
-
-All platforms build with CMake 3.25+, Ninja, and Clang 18 or newer - ReXGlue
-requires Clang, so MSVC and Apple Clang are not supported. On Windows, install
-[LLVM for Windows](https://releases.llvm.org/) and Ninja.
-
-Clone with submodules:
-
-```sh
-git clone --recursive <repo-url> skate3recomp
-cd skate3recomp
+```bash
+cmake --build out/build/android-arm64 --target skate3 -j4
 ```
 
-If you already cloned without submodules:
+Copy the two resulting libraries into the APK's `jniLibs`:
 
-```sh
-git submodule sync --recursive
-git submodule update --init --recursive --jobs "$(nproc 2>/dev/null || echo 4)"
+```bash
+cp out/build/android-arm64/librexruntimerd.so out/build/android-arm64/libskate3.so android/app/src/main/jniLibs/arm64-v8a/
 ```
 
-The build-time codegen needs an extracted game dump containing `default.xex` and
-`data/webkit/EAWebkit.xex`. Put that dump in `game/`, or pass a path with
-`SKATE3_GAME_DATA_ROOT`.
+Build the APK:
 
-The codegen should also be given the Skate 3 Title Update 3 package - the same
-`TU_12K2276_000000C000000.00000000000O3` file the in-game title update
-installer downloads. Place it in the repository root under its original name,
-or pass a path with `-DSKATE3_TITLE_UPDATE_PACKAGE=`. With the package
-present, the build extracts the update patches and recompiles the TU3-patched
-executables - the configuration used by release builds, whose runtime requires
-the title update to be staged before the game will boot. Without the package,
-codegen falls back to the unpatched retail image; that path is no longer
-regularly tested, and `generate-all` reporting unresolved calls on a clean
-retail dump is the usual symptom of building without the title update.
-
-Generate the recompiled source first:
-
-```sh
-cmake --preset relwithdebinfo -DSKATE3_GAME_DATA_ROOT="$PWD/game"
-cmake --build --preset relwithdebinfo --target generate-all --parallel
+```bash
+cd android && ./gradlew assembleDebug
 ```
 
-Then reconfigure so CMake sees the generated source lists and build:
+The result is `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-```sh
-cmake --preset relwithdebinfo -DSKATE3_GAME_DATA_ROOT="$PWD/game"
-cmake --build --preset relwithdebinfo --parallel
+## Installing
+
+```bash
+adb install -r -d app-debug.apk
 ```
 
-For release packaging, use the `release` preset on Windows, the
-`linux-release` preset on Linux, or the `macos-release` preset on macOS.
+Copy your game data to a **public** folder — from Android 11 on, `adb push`
+cannot write into `Android/data`, which is why the app reads from here instead:
 
-The native renderer's HLSL sources live in `src/native/shaders` and are
-embedded into the build automatically. The matching Vulkan SPIR-V binaries are
-pre-compiled offline with DXC and committed under `src/native/shaders/spirv`,
-so building needs no shader tooling; the SPIR-V header only needs regenerating
-after editing the HLSL.
-
-## Ubuntu/Linux Build
-
-These instructions target Ubuntu 24.04 LTS on x86_64. Other distributions need
-the same toolchain shape: CMake, Ninja, Clang 20 or newer, Vulkan development
-headers, GTK 3 development headers, and SDL-compatible audio/input development
-packages.
-
-ReXGlue requires Clang. Clang 20 is recommended on Ubuntu because it matches the
-Linux toolchain used by the rexglue SDK CI and avoids Ubuntu 24.04's
-Clang 18/libstdc++ `std::expected` feature-test mismatch.
-
-Install LLVM's apt repository and dependencies:
-
-```sh
-sudo apt update
-sudo apt install -y wget gnupg lsb-release software-properties-common
-wget https://apt.llvm.org/llvm.sh
-chmod +x llvm.sh
-sudo ./llvm.sh 20
-sudo apt install -y \
-  git cmake ninja-build build-essential pkg-config p7zip-full \
-  clang-20 lld-20 \
-  libgtk-3-dev libx11-xcb-dev \
-  libvulkan-dev vulkan-tools mesa-vulkan-drivers \
-  libasound2-dev libpulse-dev libpipewire-0.3-dev libudev-dev
+```bash
+adb shell mkdir -p /sdcard/skate3/game
+adb push game/. /sdcard/skate3/game/
 ```
 
-Optional packages improve controller/input and diagnostics coverage in SDL:
+Grant "All files access" so the app can read that folder:
 
-```sh
-sudo apt install -y libusb-1.0-0-dev libunwind-dev libibus-1.0-dev liburing-dev
+```bash
+adb shell appops set com.skate3recomp MANAGE_EXTERNAL_STORAGE allow
 ```
 
-Initialize submodules as described above, then configure, generate,
-reconfigure, and build a development build:
+On Android 11+ the app also asks for this permission on first launch — accept
+it, or it will close without finding the data.
 
-```sh
-cmake --preset linux-relwithdebinfo -DSKATE3_GAME_DATA_ROOT="$PWD/game"
-cmake --build --preset linux-relwithdebinfo --target generate-all --parallel
-cmake --preset linux-relwithdebinfo -DSKATE3_GAME_DATA_ROOT="$PWD/game"
-cmake --build --preset linux-relwithdebinfo --parallel
+The first launch is slow: shaders are compiled synchronously on purpose (see
+below). Later launches reuse the cache.
+
+## Configuration
+
+Optional. Drop a `skate3.toml` in `/sdcard/skate3/` — `config/skate3.android.toml`
+is a documented starting point.
+
+Settings changed in the in-game screen are saved to the app's private storage
+and **override** that file, so the settings screen is the source of truth once
+you have used it.
+
+Two settings are forced from `AndroidManifest.xml` because they decide whether
+the game is visible at all:
+
+- `async_shader_compilation = false` and `vulkan_async_skip_incomplete_frames = false`.
+  With async compilation, frames drawn with placeholder pipelines are skipped so
+  they never flash. A phone GPU compiles slowly enough that *every* frame is
+  skipped — a permanently black screen. Compiling synchronously costs stutter in
+  the first seconds instead.
+
+## In-game settings
+
+Press the on-screen **`ESC`** button (top of the screen) to open the settings.
+Besides the usual graphics options, **Controls → On-Screen Buttons** configures
+the touch overlay:
+
+| Option | Values |
+|---|---|
+| Button Icons | Xbox / PlayStation |
+| Button Style | Outline / Solid / Full |
+| Button Colour | Black / White |
+
+All three apply immediately.
+
+## Known issues
+
+**Skater portrait boxes are empty in menus.** Entering the team/difficulty
+screens lets the game's own render-to-texture passes for character portraits
+execute, and on Android those corrupt the GPU command ring buffer:
+
+```
+native-scene: portrait window - suppress mode 2 -> 3
+[gpu] Unimplemented GPU OPCODE: 0x00
+**** INDIRECT RINGBUFFER: Failed to execute packet
 ```
 
-Build a Linux release:
+followed by a SIGSEGV in the render thread. `skate3_native_render_scene_menu_rtt_passes = false`
+keeps those passes suppressed: the portraits stay blank, and the game reaches
+gameplay.
 
-```sh
-cmake --preset linux-release -DSKATE3_GAME_DATA_ROOT="$PWD/game"
-cmake --build --preset linux-release --target generate-all --parallel
-cmake --preset linux-release -DSKATE3_GAME_DATA_ROOT="$PWD/game"
-cmake --build --preset linux-release --parallel
-```
+**White squares on GPUs without BC/S3TC.** Xbox 360 textures are DXT
+compressed. Desktop GPUs support BC; most mobile GPUs (Mali in particular)
+expose only ETC2/ASTC, so texture creation fails and the decoder draws those
+textures white — including font atlases, which turns menu text into white
+blocks. A CPU decompression fallback (BC1–BC5 → RGBA8/R8/RG8) is implemented and
+gated behind a runtime capability probe, so it is dormant wherever BC works.
+**It has not been verified on a device that lacks BC yet.**
 
-The release artifacts are:
+**Audio glitches.** The XMA decoder repeatedly reports
+`input offset 16416 exceeds buffer size 16384` and recovers by swapping the
+input buffer.
 
-```text
-out/build/linux-release/skate3
-out/build/linux-release/librexruntime.so
-```
+**Do not force these:**
 
-## macOS Build (Apple Silicon)
+- `skate3_native_render_scene_msaa` — rebuilds the native scene's whole pipeline
+  family; forcing it caused in-game hangs.
+- `resolution_scale` / `draw_resolution_scale_x` / `_y` — forcing them from the
+  environment left the game black while still running at full frame rate. Change
+  the render scale from the settings screen instead.
 
-macOS builds use Homebrew LLVM - the `macos-*` presets expect the toolchain at
-`/opt/homebrew/opt/llvm`. Vulkan is provided by MoltenVK; the build copies the
-library next to the executable and writes a `MoltenVK_icd.json`, looking in
-`$VULKAN_SDK/lib`, `/opt/homebrew/lib`, and `/usr/local/lib`.
+## Notes on the port
 
-```sh
-brew install llvm cmake ninja molten-vk
-```
+Things that had to change for Android, in case they help a similar port:
 
-Configure, generate, reconfigure, and build a release:
-
-```sh
-cmake --preset macos-release -DSKATE3_GAME_DATA_ROOT="$PWD/game"
-cmake --build --preset macos-release --target generate-all --parallel
-cmake --preset macos-release -DSKATE3_GAME_DATA_ROOT="$PWD/game"
-cmake --build --preset macos-release --parallel
-```
-
-The release artifacts are `out/build/macos-release/skate3` and
-`librexruntime.dylib`, plus the MoltenVK library and ICD manifest beside them.
-
-## Running a Development Build
-
-Run the built executable directly with a game dump. On Linux:
-
-```sh
-LD_LIBRARY_PATH="$PWD/third_party/rexglue-sdk/out/linux-amd64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-  ./out/build/linux-relwithdebinfo/skate3 --game_data_root="$PWD/game"
-```
-
-On Windows:
-
-```powershell
-.\out\build\relwithdebinfo\skate3.exe --game_data_root="$PWD\game"
-```
-
-Keyboard-to-controller emulation is off by default; enable it in
-Settings > Controls > Mouse & Keyboard Mode.
-
-Fullscreen is on by default. Pass `--fullscreen=false` to start windowed.
-On Windows, ultrawide displays are detected automatically in fullscreen. For an
-ultrawide window, pass matching `--window_width` and `--window_height` values;
-the native renderer then draws true widescreen frames at that aspect.
-
-## rexglue Fork
-
-`third_party/rexglue-sdk` is pinned as a Git submodule to the
-`skate3-sdk-clean` branch of the Skate-specific rexglue fork. Clone
-recursively or run:
-
-```sh
-git submodule sync --recursive
-git submodule update --init --recursive --jobs "$(nproc 2>/dev/null || echo 4)"
-```
-
-The fork is based on rexglue's 0.8.0 release line and contains the Skate 3
-runtime, codegen, input, timing, the Direct3D 12 and Vulkan backends used by
-the native renderer, the settings overlay, and the Linux and macOS fixes
-needed by this project.
+- **`AndroidInitialize()` was never called.** The SDK defines it for memory,
+  threading and filesystem, but its upstream entry point is replaced by SDL's
+  library mode. Without it `ASharedMemory_create` stays null and the ~4.8 GB
+  guest heap silently falls back to a memfd — tmpfs pages that cannot be purged,
+  which took a 4 GB device down with the whole system.
+- **The config was never read.** `GetAppRootFolder()` derives from
+  `/proc/self/exe`, which on Android is the zygote in `/system/bin` — read-only.
+  It now looks in `/sdcard/skate3` first.
+- **Fibers.** Bionic has no `getcontext`/`makecontext`/`swapcontext`, so
+  [libucontext](https://github.com/kaniini/libucontext) is vendored for aarch64.
+- **The Back button.** SDL finishes the activity on Back by default, which kills
+  the process and loses all progress. `SDL_ANDROID_TRAP_BACK_BUTTON=1` delivers
+  it to the app instead. (On emulators the host's Esc key is mapped to Back.)
 
 ## Credits
 
-- [rexglue SDK](https://github.com/rexglue/rexglue-sdk), the recompilation SDK
-  used by this project.
-- [Xenia](https://github.com/xenia-project/xenia), whose Xbox 360 research and
-  tooling have helped the broader recompilation ecosystem.
+- **[mchughalex/skate3recomp](https://github.com/mchughalex/skate3recomp)** — the
+  recompilation and the native renderer, i.e. the project this is a port of. Its
+  documentation is preserved as [`README-Upstream.md`](README-Upstream.md).
+- [rexglue-sdk](https://github.com/mchughalex/skate3recomp) — the Xbox 360 static
+  recompilation runtime, derived from [Xenia](https://xenia.jp/).
+- [SansNope/UnleashedRecomp-Android](https://github.com/SansNope/UnleashedRecomp-Android)
+  — the Android app shell this port started from, and the origin of the touch
+  controls overlay.
+- [Buku313/Skate3-Android](https://github.com/Buku313/Skate3-Android) — an
+  independent Android port of the same game. Its published cvar configuration is
+  what identified the async-shader cause of the black screen here.
+- Controller button icons: **PS5 / Xbox Series Button Icons and Controls** by
+  **Zacksly** — <https://zacksly.itch.io> — licensed
+  [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Used unmodified;
+  only a subset was repackaged into `android/app/src/main/assets/buttons/`.
+
+## Legal
+
+This repository contains no game code or assets. Skate 3 is © Electronic Arts.
+You need your own legally-obtained copy to build or run anything here.
