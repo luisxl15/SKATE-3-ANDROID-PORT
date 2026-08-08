@@ -1,4 +1,4 @@
-﻿# Changelog â€” Android port
+# Changelog — Android port
 
 ## Unreleased
 
@@ -10,14 +10,14 @@ First version that reaches gameplay on Android.
 - On-screen touch controls: two sticks, face buttons, d-pad, shoulders,
   triggers, Start/Back, driving an SDL virtual gamepad.
 - Button artwork with Xbox and PlayStation glyph sets, configurable from the
-  in-game settings screen (**Controls â†’ On-Screen Buttons**): icon set, style
+  in-game settings screen (**Controls → On-Screen Buttons**): icon set, style
   (outline/solid/full) and colour.
 - On-screen `ESC` button that opens the settings screen. It injects a real
   keyboard event, so every Escape binding behaves as it does on desktop.
 - On-screen FPS counter.
 - `config/skate3.android.toml`: documented configuration for mobile GPUs, read
   from `/sdcard/skate3/skate3.toml`.
-- CPU decompression of BC1â€“BC5 textures for GPUs without BC/S3TC support, behind
+- CPU decompression of BC1–BC5 textures for GPUs without BC/S3TC support, behind
   a runtime capability probe. Dormant where BC works. **Not yet verified on a
   device that lacks BC.**
 
@@ -28,7 +28,7 @@ First version that reaches gameplay on Android.
   (`async_shader_compilation=false`, `vulkan_async_skip_incomplete_frames=false`).
 - **Whole system taken down on 4 GB devices.** `rex::memory::AndroidInitialize()`
   was never called, so `ASharedMemory_create` stayed null and the ~4.8 GB guest
-  heap always fell back to a memfd â€” tmpfs pages that cannot be purged. The
+  heap always fell back to a memfd — tmpfs pages that cannot be purged. The
   Android initialisers for memory, threading and filesystem now run at startup.
 - **Configuration was never loaded.** `GetAppRootFolder()` derives from
   `/proc/self/exe`, which on Android is the zygote in read-only `/system/bin`.
@@ -42,7 +42,7 @@ First version that reaches gameplay on Android.
   killing the process and losing all progress.
   `SDL_ANDROID_TRAP_BACK_BUTTON=1` delivers it to the app instead.
 - **Log flood.** "Too few processor cores" was emitted on every guest thread
-  reschedule â€” tens of thousands of lines a minute on a 4-core device, enough to
+  reschedule — tens of thousands of lines a minute on a 4-core device, enough to
   evict the boot log from logcat. Now logged once.
 - Vulkan device requirements relaxed for mobile GPUs: `vertexPipelineStoresAndAtomics`,
   `geometryShader` and `fillModeNonSolid` no longer abort initialisation.
@@ -54,12 +54,12 @@ First version that reaches gameplay on Android.
   blocks `adb push` into `Android/data`.
 
 ### Known issues
-See *Known issues* in [`README.md`](README.md). In short: audio
-glitches (XMA decoder), empty portrait boxes in menus, and white textures on
-GPUs without BC until the fallback is verified.
+See *Known issues* in [`README.md`](README.md). In short: audio glitches (XMA
+decoder), empty portrait boxes in menus, and white textures on GPUs without BC
+until the fallback is verified.
 
 ### Do not force
-- `skate3_native_render_scene_msaa` â€” rebuilds the native scene's pipeline
+- `skate3_native_render_scene_msaa` — rebuilds the native scene's pipeline
   family; forcing it caused in-game hangs.
-- `resolution_scale` / `draw_resolution_scale_x` / `_y` â€” forcing them from the
+- `resolution_scale` / `draw_resolution_scale_x` / `_y` — forcing them from the
   environment left the game black at full frame rate. Use the settings screen.
